@@ -742,6 +742,43 @@ try {
       }
     });
   </script>
+  <script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize real-time connection
+    Realtime.init({
+        url: 'ws://' + location.hostname + ':3000',
+        query: 'role=admin'
+    });
+    
+    // Listen for real-time messages
+    window.addEventListener('realtime:message', function(e) {
+        const data = e.detail;
+        console.log('Real-time update:', data);
+        
+        if (data.type === 'bin_updated') {
+            // Refresh bins table or update specific row
+            refreshBinsTable();
+            showToast(data.payload.message, 'info');
+        }
+        
+        if (data.type === 'janitor_updated') {
+            // Refresh janitors list
+            refreshJanitorsTable();
+            showToast('Janitor ' + data.payload.name + ' updated', 'info');
+        }
+    });
+});
+
+function refreshBinsTable() {
+    // Fetch fresh data and update the table
+    fetch('admin-dashboard.php?action=get_dashboard_stats')
+        .then(r => r.json())
+        .then(data => {
+            // Update your bins table with new data
+            renderBinsTable(data.bins);
+        });
+}
+</script>
     <script src="js/scroll-progress.js"></script>
     <script src="js/password-toggle.js"></script>
 </body>

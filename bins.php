@@ -142,9 +142,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt->execute();
             $stmt->close();
 
-            echo json_encode(['success' => true]);
-            exit;
-        }
+            // <CHANGE> Add WebSocket broadcast
+    require 'send_ws.php';
+    broadcast_to_admins('janitor_reassigned', array(
+        'bin_id' => $bin_id,
+        'janitor_id' => $janitor,
+        'message' => 'Janitor reassigned to Bin #' . $bin_id
+    ));
+    
+    echo json_encode(['success' => true]);
+    exit;
+}
 
         // ✅ TOGGLE ACTIVE / DISABLED
         if ($action === 'toggle_active') {
@@ -219,9 +227,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt->execute();
             $stmt->close();
 
-            echo json_encode(['success' => true, 'status' => $status]);
-            exit;
-        }
+            // <CHANGE> Add WebSocket broadcast
+    require 'send_ws.php';
+    broadcast_to_admins('bin_updated', array(
+        'bin_id' => $bin_id,
+        'status' => $status,
+        'message' => 'Bin #' . $bin_id . ' status changed to ' . $status
+    ));
+    
+    echo json_encode(['success' => true, 'status' => $status]);
+    exit;
+}
 
         // Delete bin (admin-only)
         if ($action === 'delete_bin') {
