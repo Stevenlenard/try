@@ -1,9 +1,7 @@
 /*
-Small change: store minimal client meta (role/userId) supplied via query string at WS connect time,
-and allow POST /broadcast to include a "recipients" key to target messages.
-
-Start (unchanged): node websocket-server.js
-Requires: express ws
+Simple WS server with targeted broadcasts.
+Requires: npm install express ws
+Run: BROADCAST_SECRET=your-secret node websocket-server.js
 */
 const express = require('express');
 const http = require('http');
@@ -20,40 +18,25 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
-  // Parse query params from the WebSocket upgrade request (e.g. ws://host:3000/?role=admin&userId=123)
+  // parse querystring for role/userId: ws://host:3000/?role=admin&userId=1
   try {
     const parsed = url.parse(req.url, true);
-    const q = parsed.query || {};
-    ws.clientMeta = {
-      role: q.role || null,           // e.g. "admin" or "janitor"
-      userId: q.userId ? String(q.userId) : null // keep as string for comparison
-    };
+    ws.clientMeta = { role: parsed.query.role || null, userId: parsed.query.userId ? String(parsed.query.userId) : null };
   } catch (e) {
     ws.clientMeta = { role: null, userId: null };
   }
-
-  console.log('Client connected:', req.socket.remoteAddress, ws.clientMeta);
   ws.isAlive = true;
   ws.on('pong', () => (ws.isAlive = true));
-
-  ws.on('message', (msg) => {
-    // optional: handle client-originated messages (heartbeat, register, etc.)
-    console.log('Received from client:', msg.toString());
+  ws.on('message', (m) => {
+    // optional: client can send identify msg {type:'identify', role:'admin', userId:'1'}
     try {
-      const obj = JSON.parse(msg.toString());
-      // Example: client can send {type: 'identify', role: 'admin', userId: '1'} instead of querystring
-      if (obj && obj.type === 'identify') {
-        ws.clientMeta = { role: obj.role || null, userId: obj.userId ? String(obj.userId) : null };
-      }
+      const obj = JSON.parse(m.toString());
+      if (obj && obj.type === 'identify') ws.clientMeta = { role: obj.role || null, userId: obj.userId ? String(obj.userId) : null };
     } catch (e) {}
   });
-
-  ws.on('close', () => {
-    console.log('Client disconnected', ws.clientMeta);
-  });
+  ws.on('close', () => {});
 });
 
-// Heartbeat to drop dead connections
 setInterval(() => {
   wss.clients.forEach((ws) => {
     if (!ws.isAlive) return ws.terminate();
@@ -62,55 +45,37 @@ setInterval(() => {
   });
 }, 30000);
 
-// Broadcast endpoint: accepts payload and optional recipients
-// Example POST body:
-// {
-//   "type": "notification",
-//   "payload": { "title": "...", "bin_id": 5 },
-//   "recipients": { "role": "admin" }
-// }
+// Broadcast endpoint: accepts {type, payload, recipients?}
 app.post('/broadcast', (req, res) => {
   const token = req.headers['x-broadcast-token'] || '';
-  if (token !== BROADCAST_SECRET) {
-    return res.status(401).json({ ok: false, error: 'invalid token' });
-  }
+  if (token !== BROADCAST_SECRET) return res.status(401).json({ ok: false, error: 'invalid token' });
 
-  const payload = req.body;
-  if (!payload || typeof payload !== 'object' || !payload.type) {
-    return res.status(400).json({ ok: false, error: 'invalid payload' });
-  }
+  const body = req.body;
+  if (!body || !body.type) return res.status(400).json({ ok: false, error: 'invalid payload' });
 
-  const recipients = payload.recipients || null; // e.g. { role: 'admin' } or { user_id: '123' }
-  const message = JSON.stringify(payload);
-  let count = 0;
+  const recipients = body.recipients || null;
+  const msg = JSON.stringify(body);
+  let sent = 0;
 
   wss.clients.forEach((client) => {
     if (client.readyState !== client.OPEN) return;
     if (!recipients) {
-      client.send(message);
-      count++;
+      client.send(msg);
+      sent++;
       return;
     }
-
-    // recipients targeting logic:
-    let sent = false;
+    let delivered = false;
     if (recipients.role && client.clientMeta && client.clientMeta.role === recipients.role) {
-      client.send(message);
-      sent = true;
+      client.send(msg); delivered = true;
     } else if (recipients.user_id && client.clientMeta && String(client.clientMeta.userId) === String(recipients.user_id)) {
-      client.send(message);
-      sent = true;
+      client.send(msg); delivered = true;
     } else if (Array.isArray(recipients.user_ids) && client.clientMeta && recipients.user_ids.map(String).includes(String(client.clientMeta.userId))) {
-      client.send(message);
-      sent = true;
+      client.send(msg); delivered = true;
     }
-
-    if (sent) count++;
+    if (delivered) sent++;
   });
 
-  res.json({ ok: true, clients: count });
+  res.json({ ok: true, clients: sent });
 });
 
-server.listen(PORT, () => {
-  console.log(`WebSocket + Broadcast HTTP server listening on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`WS server listening on ${PORT}`));

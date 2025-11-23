@@ -1,13 +1,12 @@
 <?php
-// Minimal helper to POST a payload to the Node broadcast endpoint.
-// Put this file somewhere like includes/send_ws.php and include/require it
-function send_ws_broadcast($payloadArray) {
-    // Configure: update these to your server and secret
-    $wsHost = 'http://127.0.0.1:3000'; // if Node server runs on same host
-    $endpoint = $wsHost . '/broadcast';
-    $secret = 'change-me-secret'; // must match BROADCAST_SECRET set for Node server
+// Minimal helper: POST to your websocket-server /broadcast endpoint.
+// Configure $wsHost and $secret to match websocket-server.js settings.
+function send_ws_broadcast(array $payload) {
+    $wsHost = 'http://127.0.0.1:3000'; // node server host (use https:// if behind TLS reverse proxy)
+    $endpoint = rtrim($wsHost, '/') . '/broadcast';
+    $secret = 'change-me-secret'; // set same value as BROADCAST_SECRET
 
-    $data = json_encode($payloadArray);
+    $data = json_encode($payload);
     $ch = curl_init($endpoint);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -16,7 +15,7 @@ function send_ws_broadcast($payloadArray) {
         'X-Broadcast-Token: ' . $secret
     ]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 2); // don't block for long
+    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
     $resp = curl_exec($ch);
     $err = curl_error($ch);
     curl_close($ch);
